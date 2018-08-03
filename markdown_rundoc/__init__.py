@@ -2,7 +2,7 @@
 Set of markdown extensions used by rundoc utility.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 __license__ = "BSD"
 __year__ = "2018"
 __author__ = "Predrag Mandic"
