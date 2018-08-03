@@ -12,11 +12,11 @@ def get_file_contents(filename):
         return fp.read()
 
 setup(
-    name = 'markdown_rundoc',
+    name = 'markdown-rundoc',
     description = markdown_rundoc.__doc__.strip(),
     long_description=get_file_contents('README.md'),
-    url = 'https://gitlab.com/nul.one/markdown_rundoc',
-    download_url = 'https://gitlab.com/nul.one/markdown_rundoc/-/archive/{0}/markdown_rundoc-{0}.tar.gz'.format(markdown_rundoc.__version__),
+    url = 'https://gitlab.com/nul.one/markdown-rundoc',
+    download_url = 'https://gitlab.com/nul.one/markdown-rundoc/-/archive/{0}/markdown-rundoc-{0}.tar.gz'.format(markdown_rundoc.__version__),
     version = markdown_rundoc.__version__,
     author = markdown_rundoc.__author__,
     author_email = markdown_rundoc.__author_email__,
