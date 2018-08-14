@@ -19,12 +19,19 @@ from __future__ import absolute_import
 from __future__ import unicode_literals
 from markdown.extensions import Extension
 from markdown.preprocessors import Preprocessor
-from markdown.extensions.codehilite import CodeHilite, CodeHiliteExtension, parse_hl_lines
 import re
 
 
 class RundocCodeExtension(Extension):
 
+    def __init__(self, **kwargs):
+        self.config = {
+            'tags': [ kwargs.get('tags') ],
+            'must_have_tags': [ kwargs.get('must_have_tags') ],
+            'must_not_have_tags': [ kwargs.get('must_not_have_tags') ],
+            }
+        super(RundocCodeExtension, self).__init__(**kwargs)
+    
     def extendMarkdown(self, md, md_globals):
         """ Add RundocBlockPreprocessor to the Markdown instance. """
         md.registerExtension(self)
@@ -37,60 +44,76 @@ class RundocCodeExtension(Extension):
 class RundocBlockPreprocessor(Preprocessor):
     RUNDOC_BLOCK_RE = re.compile(r'''
 (?P<fence>^(?:~{3,}|`{3,}))[ ]*         # Opening ``` or ~~~
-(\{?\.?(?P<lang>[^\n\r]*))?[ ]*         # Optional {, and lang
+(\{?\.?(?P<tags>[^\n\r]*))?[ ]*         # Optional {, and lang
 # Optional highlight lines, single- or double-quote-delimited
 (hl_lines=(?P<quot>"|')(?P<hl_lines>.*?)(?P=quot))?[ ]*
 }?[ ]*\n                                # Optional closing }
 (?P<code>.*?)(?<=\n)
 (?P=fence)[ ]*$''', re.MULTILINE | re.DOTALL | re.VERBOSE)
     CODE_WRAP = '<pre><code%s>%s</code></pre>'
-    LANG_TAG = ' class="%s"'
+    CLASS_TAG = ' class="%s"'
+    config = None
 
     def __init__(self, md):
         super(RundocBlockPreprocessor, self).__init__(md)
 
-        self.checked_for_codehilite = False
-        self.codehilite_conf = {}
-
     def run(self, lines):
         """ Match and store Rundoc Code Blocks in the HtmlStash. """
 
-        # Check for code hilite extension
-        if not self.checked_for_codehilite:
-            for ext in self.markdown.registeredExtensions:
-                if isinstance(ext, CodeHiliteExtension):
-                    self.codehilite_conf = ext.config
-                    break
-
-            self.checked_for_codehilite = True
+        # Get config
+        for ext in self.markdown.registeredExtensions:
+            if isinstance(ext, RundocCodeExtension):
+                self.config = ext.config
+                #print(self.config)
+                break
 
         text = "\n".join(lines)
         while 1:
             m = self.RUNDOC_BLOCK_RE.search(text)
+            tags = []
+            have_tags = []
+            must_have_tags = []
+            must_not_have_tags = []
+            if self.config['tags'][0]:
+                have_tags = self.config['tags'][0].split('#')
+                have_tags = list(filter(bool, have_tags))
+            if self.config['must_have_tags'][0]:
+                must_have_tags = self.config['must_have_tags'][0].split('#')
+                must_have_tags = list(filter(bool, must_have_tags))
+            if self.config['must_not_have_tags'][0]:
+                must_not_have_tags = self.config['must_not_have_tags'][0].split('#')
+                must_not_have_tags = list(filter(bool, must_not_have_tags))
+
             if m:
-                lang = ''
-                if m.group('lang'):
-                    lang = self.LANG_TAG % m.group('lang')
+                if m.group('tags'):
+                    tags = m.group('tags').split('#')
+                    tags = list(filter(bool, tags))
+                classes = tags[:]
+                rundoc_selected = False
+                if have_tags:
+                    for tag in have_tags:
+                        if tag in classes:
+                            rundoc_selected = True
+                            break
+                if must_have_tags:
+                    for tag in must_have_tags:
+                        if tag not in classes:
+                            rundoc_selected = False
+                            break
+                if rundoc_selected and must_not_have_tags:
+                    for tag in must_not_have_tags:
+                        if tag in classes:
+                            rundoc_selected = False
+                            break
+                if not (have_tags or must_have_tags or must_not_have_tags):
+                    if len(tags):
+                        rundoc_selected = True
+                if rundoc_selected:
+                    classes.append("rundoc_selected")
 
-                # If config is not empty, then the codehighlite extension
-                # is enabled, so we call it to highlight the code
-                if self.codehilite_conf:
-                    highliter = CodeHilite(
-                        m.group('code'),
-                        linenums=self.codehilite_conf['linenums'][0],
-                        guess_lang=self.codehilite_conf['guess_lang'][0],
-                        css_class=self.codehilite_conf['css_class'][0],
-                        style=self.codehilite_conf['pygments_style'][0],
-                        use_pygments=self.codehilite_conf['use_pygments'][0],
-                        lang=(m.group('lang') or None),
-                        noclasses=self.codehilite_conf['noclasses'][0],
-                        hl_lines=parse_hl_lines(m.group('hl_lines'))
-                    )
-
-                    code = highliter.hilite()
-                else:
-                    code = self.CODE_WRAP % (lang,
-                                             self._escape(m.group('code')))
+                class_tag = self.CLASS_TAG % ' '.join(classes)
+                code = self.CODE_WRAP % (class_tag,
+                                         self._escape(m.group('code')))
 
                 placeholder = self.markdown.htmlStash.store(code, safe=True)
                 text = '%s\n%s\n%s' % (text[:m.start()],
@@ -111,3 +134,4 @@ class RundocBlockPreprocessor(Preprocessor):
 
 def makeExtension(*args, **kwargs):
     return RundocCodeExtension(*args, **kwargs)
+
