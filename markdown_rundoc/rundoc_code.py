@@ -95,6 +95,10 @@ class RundocBlockPreprocessor(Preprocessor):
                         if tag in classes:
                             rundoc_selected = True
                             break
+                else:
+                    if len(classes):
+                        # check if at least interpreter is defined
+                        rundoc_selected = True
                 if must_have_tags:
                     for tag in must_have_tags:
                         if tag not in classes:
