@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 
+import markdown_rundoc as project
+
 from setuptools import setup, find_packages
 import os
-import markdown_rundoc
 
 def here(*path):
     return os.path.join(os.path.dirname(__file__), *path)
@@ -12,16 +13,16 @@ def get_file_contents(filename):
         return fp.read()
 
 setup(
-    name = 'markdown-rundoc',
-    description = markdown_rundoc.__doc__.strip(),
+    name = project.__name__,
+    description = project.__doc__.strip(),
     long_description=get_file_contents('README.md'),
-    url = 'https://gitlab.com/nul.one/markdown-rundoc',
-    download_url = 'https://gitlab.com/nul.one/markdown-rundoc/-/archive/{0}/markdown-rundoc-{0}.tar.gz'.format(markdown_rundoc.__version__),
-    version = markdown_rundoc.__version__,
-    author = markdown_rundoc.__author__,
-    author_email = markdown_rundoc.__author_email__,
-    license = markdown_rundoc.__license__,
-    packages = [ 'markdown_rundoc' ],
+    url = 'https://gitlab.com/nul.one/' + project.__name__,
+    download_url = 'https://gitlab.com/nul.one/{1}/-/archive/{0}/{1}-{0}.tar.gz'.format(project.__version__, project.__name__),
+    version = project.__version__,
+    author = project.__author__,
+    author_email = project.__author_email__,
+    license = project.__license__,
+    packages = [ project.__name__ ],
     classifiers=[
         'Development Status :: 4 - Beta',
         'Environment :: Console',
