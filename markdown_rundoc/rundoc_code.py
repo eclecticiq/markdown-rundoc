@@ -30,6 +30,8 @@ class RundocCodeExtension(Extension):
             'tags': [ kwargs.get('tags') ],
             'must_have_tags': [ kwargs.get('must_have_tags') ],
             'must_not_have_tags': [ kwargs.get('must_not_have_tags') ],
+            'single_session': [ kwargs.get('single_session') ],
+            'selection_tag': [ kwargs.get('selection_tag') ],
             }
         super(RundocCodeExtension, self).__init__(**kwargs)
     
@@ -46,6 +48,7 @@ def is_selected(
     have_tags,
     must_have_tags,
     must_not_have_tags,
+    single_session='',
     collected=[], # select envs based on these
     skip=[] # skip selection on these interpreters
     ):
@@ -61,6 +64,8 @@ def is_selected(
         for tag in tags:
             if tag in collected:
                 return True # collected env
+    elif single_session and single_session != tags[0]:
+        return False
     selected = False
     if have_tags:
         for tag in have_tags:
@@ -91,9 +96,6 @@ class RundocBlockPreprocessor(Preprocessor):
 }?[ ]*\n                                # Optional closing }
 (?P<code>.*?)(?<=\n)
 (?P=fence)[ ]*$''', re.MULTILINE | re.DOTALL | re.VERBOSE)
-    CODE_WRAP = '<pre><code%s>%s</code></pre>'
-    CLASS_TAG = ' class="%s"'
-    SELECTED_TAG = 'rundoc_selected'
     config = None
 
     def __init__(self, md):
@@ -110,6 +112,7 @@ class RundocBlockPreprocessor(Preprocessor):
         have_tags = []
         must_have_tags = []
         must_not_have_tags = []
+        single_session = ''
         collected_tags = set() # all tags of all selected code blocks
         if self.config['tags'][0]:
             have_tags = self.config['tags'][0].split('#')
@@ -120,6 +123,8 @@ class RundocBlockPreprocessor(Preprocessor):
         if self.config['must_not_have_tags'][0]:
             must_not_have_tags = self.config['must_not_have_tags'][0].split('#')
             must_not_have_tags = list(filter(bool, must_not_have_tags))
+        if self.config['single_session'][0]:
+            single_session = self.config['single_session'][0]
 
         # Iterate over text. Find first code block, collect all of it's tags if
         # identified as selected and is not env or secret. Remove it and start
@@ -133,8 +138,9 @@ class RundocBlockPreprocessor(Preprocessor):
                 have_tags,
                 must_have_tags,
                 must_not_have_tags,
-                [],
-                env_tags )
+                single_session,
+                collected=[],
+                skip=env_tags )
             if selected_non_env:
                 tags = m.group('tags').split('#')
                 collected_tags.update(tags[1:])
@@ -154,12 +160,13 @@ class RundocBlockPreprocessor(Preprocessor):
                 have_tags,
                 must_have_tags,
                 must_not_have_tags,
-                list(collected_tags))
+                single_session,
+                collected=list(collected_tags))
             if selected:
-                classes.append(self.SELECTED_TAG)
+                classes.append(self.config['selection_tag'][0] or 'selected')
 
-            class_tag = self.CLASS_TAG % ' '.join(classes)
-            code = self.CODE_WRAP % (class_tag,
+            class_tag = ' class="%s"' % ' '.join(classes)
+            code = '<pre><code%s>%s</code></pre>' % (class_tag,
                                      self._escape(m.group('code')))
 
             placeholder = self.markdown.htmlStash.store(code, safe=True)
