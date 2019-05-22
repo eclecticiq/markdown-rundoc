@@ -51,6 +51,7 @@ def is_selected(
     ):
     """ Return True if regex SRE_Match object code_match is selected. """
     tags = []
+    have_tags.extend(must_have_tags)
     if code_match.group('tags'):
         tags = code_match.group('tags').split('#')
         tags = list(filter(bool, tags))
