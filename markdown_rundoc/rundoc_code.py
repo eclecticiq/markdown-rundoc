@@ -10,7 +10,7 @@ Based on Fenced Code Extension:
     Original code Copyright 2007-2008 [Waylan Limberg](http://achinghead.com/).
     Changes Copyright 2008-2014 The Python Markdown Project
 
-Changes Copyright 2018 Predrag Mandic
+Changes Copyright 2018-2019 Predrag Mandic
 
 License: [BSD](http://www.opensource.org/licenses/bsd-license.php)
 """
@@ -21,6 +21,7 @@ from markdown.extensions import Extension
 from markdown.preprocessors import Preprocessor
 import re
 
+env_tags = [ 'env', 'environ', 'environment', 'secret', 'secrets' ]
 
 class RundocCodeExtension(Extension):
 
@@ -40,6 +41,45 @@ class RundocCodeExtension(Extension):
                              RundocBlockPreprocessor(md),
                              ">normalize_whitespace")
 
+def is_selected(
+    code_match, #SRE_Match object
+    have_tags,
+    must_have_tags,
+    must_not_have_tags,
+    collected=[], # select envs based on these
+    skip=[] # skip selection on these interpreters
+    ):
+    """ Return True if regex SRE_Match object code_match is selected. """
+    tags = []
+    if code_match.group('tags'):
+        tags = code_match.group('tags').split('#')
+        tags = list(filter(bool, tags))
+    if not len(tags): return False # no interpreter
+    if tags[0] in skip: return False
+    if tags[0] in env_tags:
+        for tag in tags:
+            if tag in collected:
+                return True # collected env
+    selected = False
+    if have_tags:
+        for tag in have_tags:
+            if tag in tags:
+                selected = True
+                break
+    if must_have_tags:
+        for tag in must_have_tags:
+            if tag not in tags:
+                selected = False
+                break
+    if selected and must_not_have_tags:
+        for tag in must_not_have_tags:
+            if tag in tags:
+                selected = False
+                break
+    if not (have_tags or must_have_tags or must_not_have_tags):
+        if len(tags):
+            selected = True
+    return selected
 
 class RundocBlockPreprocessor(Preprocessor):
     RUNDOC_BLOCK_RE = re.compile(r'''
@@ -52,6 +92,7 @@ class RundocBlockPreprocessor(Preprocessor):
 (?P=fence)[ ]*$''', re.MULTILINE | re.DOTALL | re.VERBOSE)
     CODE_WRAP = '<pre><code%s>%s</code></pre>'
     CLASS_TAG = ' class="%s"'
+    SELECTED_TAG = 'rundoc_selected'
     config = None
 
     def __init__(self, md):
@@ -64,67 +105,66 @@ class RundocBlockPreprocessor(Preprocessor):
         for ext in self.markdown.registeredExtensions:
             if isinstance(ext, RundocCodeExtension):
                 self.config = ext.config
-                #print(self.config)
                 break
+        have_tags = []
+        must_have_tags = []
+        must_not_have_tags = []
+        collected_tags = set() # all tags of all selected code blocks
+        if self.config['tags'][0]:
+            have_tags = self.config['tags'][0].split('#')
+            have_tags = list(filter(bool, have_tags))
+        if self.config['must_have_tags'][0]:
+            must_have_tags = self.config['must_have_tags'][0].split('#')
+            must_have_tags = list(filter(bool, must_have_tags))
+        if self.config['must_not_have_tags'][0]:
+            must_not_have_tags = self.config['must_not_have_tags'][0].split('#')
+            must_not_have_tags = list(filter(bool, must_not_have_tags))
 
+        # Iterate over text. Find first code block, collect all of it's tags if
+        # identified as selected and is not env or secret. Remove it and start
+        # again until no code blocks are left.
         text = "\n".join(lines)
-        while 1:
+        while True:
             m = self.RUNDOC_BLOCK_RE.search(text)
-            tags = []
-            have_tags = []
-            must_have_tags = []
-            must_not_have_tags = []
-            if self.config['tags'][0]:
-                have_tags = self.config['tags'][0].split('#')
-                have_tags = list(filter(bool, have_tags))
-            if self.config['must_have_tags'][0]:
-                must_have_tags = self.config['must_have_tags'][0].split('#')
-                must_have_tags = list(filter(bool, must_have_tags))
-            if self.config['must_not_have_tags'][0]:
-                must_not_have_tags = self.config['must_not_have_tags'][0].split('#')
-                must_not_have_tags = list(filter(bool, must_not_have_tags))
+            if not m: break
+            selected_non_env = is_selected(
+                m,
+                have_tags,
+                must_have_tags,
+                must_not_have_tags,
+                [],
+                env_tags )
+            if selected_non_env:
+                tags = m.group('tags').split('#')
+                collected_tags.update(tags[1:])
+            text = text[m.end():]
 
-            if m:
-                if m.group('tags'):
-                    tags = m.group('tags').split('#')
-                    tags = list(filter(bool, tags))
-                classes = tags[:]
-                rundoc_selected = False
-                if have_tags:
-                    for tag in have_tags:
-                        if tag in classes:
-                            rundoc_selected = True
-                            break
-                else:
-                    if len(classes):
-                        # check if at least interpreter is defined
-                        rundoc_selected = True
-                if must_have_tags:
-                    for tag in must_have_tags:
-                        if tag not in classes:
-                            rundoc_selected = False
-                            break
-                if rundoc_selected and must_not_have_tags:
-                    for tag in must_not_have_tags:
-                        if tag in classes:
-                            rundoc_selected = False
-                            break
-                if not (have_tags or must_have_tags or must_not_have_tags):
-                    if len(tags):
-                        rundoc_selected = True
-                if rundoc_selected:
-                    classes.append("rundoc_selected")
+        # Iterate over text. Find first code block. Determine html classes
+        # based on tags and selected state. Replace it with html. Start over
+        # until no code blocks are left.
+        text = "\n".join(lines)
+        while True:
+            m = self.RUNDOC_BLOCK_RE.search(text)
+            if not m: break
+            tags = m.group('tags').split('#')
+            classes = list(filter(bool, tags))
+            selected = is_selected(
+                m,
+                have_tags,
+                must_have_tags,
+                must_not_have_tags,
+                list(collected_tags))
+            if selected:
+                classes.append(self.SELECTED_TAG)
 
-                class_tag = self.CLASS_TAG % ' '.join(classes)
-                code = self.CODE_WRAP % (class_tag,
-                                         self._escape(m.group('code')))
+            class_tag = self.CLASS_TAG % ' '.join(classes)
+            code = self.CODE_WRAP % (class_tag,
+                                     self._escape(m.group('code')))
 
-                placeholder = self.markdown.htmlStash.store(code, safe=True)
-                text = '%s\n%s\n%s' % (text[:m.start()],
-                                       placeholder,
-                                       text[m.end():])
-            else:
-                break
+            placeholder = self.markdown.htmlStash.store(code, safe=True)
+            text = '%s\n%s\n%s' % (text[:m.start()],
+                                   placeholder,
+                                   text[m.end():])
         return text.split("\n")
 
     def _escape(self, txt):
